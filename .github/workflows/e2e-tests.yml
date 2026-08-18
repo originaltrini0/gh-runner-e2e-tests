@@ -9,33 +9,40 @@ on:
 
 jobs:
   shell-tests:
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-    runs-on: [self-hosted, "${{ matrix.arch }}"]
+    runs-on: [github-runner-scale-set]
     steps:
       - name: System info
         run: |
+          echo "Runner name: ${RUNNER_NAME}"
+          echo "Pod arch: $(uname -m)"
           echo "$(uname --all)"
+          docker buildx version
 
   build-container:
     strategy:
       matrix:
         arch: [amd64, arm64]
-    runs-on: [self-hosted, "${{ matrix.arch }}"]
+    runs-on: [github-runner-scale-set]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Build Docker Image
+      - name: Configure buildx remote builder (buildkitd-github)
         run: |
-          docker build --platform linux/${{ matrix.arch }} -t e2e-test-image-${{ matrix.arch }} .
-          docker run --platform linux/${{ matrix.arch }} --rm e2e-test-image-${{ matrix.arch }}
+          docker buildx create --name buildkit-github --driver remote \
+            --driver-opt "cacert=/etc/buildkit/ca.pem" \
+            --driver-opt "cert=/etc/buildkit/cert.pem" \
+            --driver-opt "key=/etc/buildkit/key.pem" \
+            "${BUILDKIT_HOST}"
+          docker buildx use buildkit-github
+          docker buildx inspect
+      - name: Build Docker image for linux/${{ matrix.arch }}
+        run: |
+          docker buildx build \
+            --platform "linux/${{ matrix.arch }}" \
+            --tag "e2e-test-image-${{ matrix.arch }}" .
 
   build-binary:
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-    runs-on: [self-hosted, "${{ matrix.arch }}"]
+    runs-on: [github-runner-scale-set]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -43,7 +50,17 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Build Go binary
-        run: GOARCH=${{ matrix.arch }} go build -o test-binary main.go
-      - name: Run Go binary
-        run: ./test-binary
+      - name: Build native + cross-arch binaries
+        run: |
+          case "$(uname -m)" in
+            x86_64)  native=amd64; cross=arm64 ;;
+            aarch64) native=arm64; cross=amd64 ;;
+            *) echo "Unsupported host architecture: $(uname -m)"; exit 1 ;;
+          esac
+          echo "native=$native cross=$cross"
+          GOARCH="$native" go build -o test-binary-native main.go
+          GOARCH="$cross"  go build -o test-binary-cross  main.go
+          go version test-binary-native
+          go version test-binary-cross
+      - name: Run native binary
+        run: ./test-binary-native
