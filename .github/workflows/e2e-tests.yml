@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+  schedule:
+    # Weekly on Fridays at 14:00 UTC
+    - cron: "0 14 * * 5"
 
 jobs:
   shell-tests:
