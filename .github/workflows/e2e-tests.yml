@@ -28,7 +28,7 @@ jobs:
     runs-on: [github-runner-scale-set]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Configure buildx remote builder (buildkitd-github)
         run: |
           docker buildx create --name buildkit-github --driver remote \
@@ -48,11 +48,11 @@ jobs:
     runs-on: [github-runner-scale-set]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.22"
+          go-version: "1.27"
       - name: Build native + cross-arch binaries
         run: |
           case "$(uname -m)" in
